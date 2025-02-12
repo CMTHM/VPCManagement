@@ -1,0 +1,272 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaVPCExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - lambda.amazonaws.com
+            Action: 
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaVPCPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - ec2:CreateVpc
+                  - ec2:CreateSubnet
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSubnets
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                Resource: !GetAtt VPCRecordsTable.Arn
+
+  # DynamoDB Table for storing VPC details
+  VPCRecordsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: VPCRecords
+      AttributeDefinitions:
+        - AttributeName: vpc_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: vpc_id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Lambda Function to Create VPC
+  CreateVPCLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: CreateVPCFunction
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+
+          ec2 = boto3.client("ec2")
+          dynamodb = boto3.resource("dynamodb")
+          table = dynamodb.Table("VPCRecords")
+
+          def lambda_handler(event, context):
+              body = json.loads(event["body"])
+              cidr_block = body.get("cidr_block", "10.0.0.0/16")
+              subnet_cidrs = body.get("subnet_cidrs", ["10.0.1.0/24", "10.0.2.0/24"])
+
+              vpc_response = ec2.create_vpc(CidrBlock=cidr_block)
+              vpc_id = vpc_response["Vpc"]["VpcId"]
+
+              subnets = []
+              for cidr in subnet_cidrs:
+                  subnet_response = ec2.create_subnet(VpcId=vpc_id, CidrBlock=cidr)
+                  subnets.append(subnet_response["Subnet"]["SubnetId"])
+
+              table.put_item(Item={"vpc_id": vpc_id, "cidr_block": cidr_block, "subnets": subnets})
+
+              return {"statusCode": 201, "body": json.dumps({"message": "VPC created", "vpc_id": vpc_id, "subnets": subnets})}
+
+  # Lambda Function to Retrieve VPC Details
+  GetVPCLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GetVPCFunction
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+
+          dynamodb = boto3.resource("dynamodb")
+          table = dynamodb.Table("VPCRecords")
+
+          def lambda_handler(event, context):
+              vpc_id = event["pathParameters"]["vpc_id"]
+              response = table.get_item(Key={"vpc_id": vpc_id})
+
+              if "Item" not in response:
+                  return {"statusCode": 404, "body": json.dumps({"error": "VPC not found"})}
+
+              return {"statusCode": 200, "body": json.dumps(response["Item"])}
+
+  # API Gateway
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: VPCManagementAPI
+
+  # API Gateway Resource - Create VPC
+  CreateVPCResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: "create-vpc"
+      RestApiId: !Ref ApiGateway
+
+  # API Gateway Method - POST /create-vpc
+  CreateVPCMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      ResourceId: !Ref CreateVPCResource
+      RestApiId: !Ref ApiGateway
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateVPCLambda.Arn}/invocations
+          - { CreateVPCLambda: !Ref CreateVPCLambda }
+
+  # API Gateway Resource - Get VPC
+  GetVPCResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: "get-vpc"
+      RestApiId: !Ref ApiGateway
+
+  # API Gateway Resource - {vpc_id}
+  GetVPCIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref GetVPCResource
+      PathPart: "{vpc_id}"
+      RestApiId: !Ref ApiGateway
+
+  # API Gateway Method - GET /get-vpc/{vpc_id}
+  GetVPCMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: GET
+      ResourceId: !Ref GetVPCIdResource
+      RestApiId: !Ref ApiGateway
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetVPCLambda.Arn}/invocations
+          - { GetVPCLambda: !Ref GetVPCLambda }
+
+  # Deploy API Gateway
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: prod
+    DependsOn:
+      - GetVPCMethod
+      - CreateVPCMethod      
+
+  # Lambda Permissions for API Gateway
+  CreateVPCPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CreateVPCLambda
+      Principal: apigateway.amazonaws.com
+
+  GetVPCPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetVPCLambda
+      Principal: apigateway.amazonaws.com
+  # Lambda Authorizer
+  VPCAuthLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: VPCAuthFunction
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+              token = event.get("authorizationToken", "").replace("Bearer ", "")
+
+              # Dummy token validation
+              VALID_TOKENS = {"valid-token-123": "user123"}  
+
+              if token in VALID_TOKENS:
+                  return {
+                      "principalId": VALID_TOKENS[token],
+                      "policyDocument": {
+                          "Version": "2012-10-17",
+                          "Statement": [
+                              {
+                                  "Action": "execute-api:Invoke",
+                                  "Effect": "Allow",
+                                  "Resource": event["methodArn"]
+                              }
+                          ]
+                      }
+                  }
+
+              return {
+                  "principalId": "unauthorized",
+                  "policyDocument": {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                          {
+                              "Action": "execute-api:Invoke",
+                              "Effect": "Deny",
+                              "Resource": event["methodArn"]
+                          }
+                      ]
+                  }
+              }
+
+  # API Gateway Authorizer
+  VPCAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: VPCAuthorizer
+      RestApiId: !Ref ApiGateway
+      Type: TOKEN
+      IdentitySource: method.request.header.Authorization
+      AuthorizerUri: 
+        !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VPCAuthLambda.Arn}/invocations
+
+Outputs:
+  ApiInvokeURL:
+    Description: "Invoke URL for the API Gateway"
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/"
+
+# curl -X POST "https://q6o9v7ecek.execute-api.us-east-1.amazonaws.com/prod/create-vpc" \
+     # -H "Content-Type: application/json" \
+     # -d '{
+           # "cidr_block": "10.0.0.0/16",
+           # "subnet_cidrs": ["10.0.1.0/24", "10.0.2.0/24"]
+         # }'
+
+# curl -X GET "https://q6o9v7ecek.execute-api.us-east-1.amazonaws.com/prod/get-vpc/vpc-0af8794b91fe04b06"
+
+
+curl -X GET "https://q6o9v7ecek.execute-api.us-east-1.amazonaws.com/prod/get-vpc/vpc-050b1fdc5988335b8" \
+     -H "Authorization: Bearer valid-token-123"
+
