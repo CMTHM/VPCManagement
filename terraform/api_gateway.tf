@@ -62,9 +62,17 @@ resource "aws_api_gateway_authorizer" "vpc_auth" {
 
 resource "aws_api_gateway_deployment" "vpc_api_deployment" {
   rest_api_id = aws_api_gateway_rest_api.vpc_api.id
-  stage_name  = "prod"
+  depends_on  = [
+    aws_api_gateway_method.create_vpc_post,
+    aws_api_gateway_method.get_vpc_get
+  ]
 }
-
+# API Gateway Stage (explicitly defined)
+resource "aws_api_gateway_stage" "vpc_api_stage" {
+  stage_name    = "prod"
+  rest_api_id  = aws_api_gateway_rest_api.vpc_api.id
+  deployment_id = aws_api_gateway_deployment.vpc_api_deployment.id
+}
 resource "aws_lambda_permission" "create_vpc_permission" {
   statement_id  = "AllowExecutionFromAPIGatewayCreateVPC"
   action        = "lambda:InvokeFunction"
