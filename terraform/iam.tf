@@ -30,6 +30,13 @@ resource "aws_iam_policy" "lambda_vpc_policy" {
       {
         Effect = "Allow"
         Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = "*"
+      },	  
+      {
+        Effect = "Allow"
+        Action = [
           "ec2:CreateVpc",
           "ec2:CreateSubnet",
           "ec2:DescribeVpcs",

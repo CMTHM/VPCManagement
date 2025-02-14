@@ -13,6 +13,7 @@ Components:
 •	API Gateway: Exposes the Lambda functions as REST API endpoints
 •	IAM Roles: Defines permissions for Lambda
 •	Lambda Authorizer: Ensures secure access via token authentication
+•   Secret Manager : To store the token 
 ________________________________________
 3. Deployment Instructions
 3.1 Prerequisites
@@ -45,10 +46,13 @@ For Testing :
       -d '{
             "cidr_block": "10.0.0.0/16",
             "subnet_cidrs": ["10.0.1.0/24", "10.0.2.0/24"]
-          }'
-curl -X POST "https://bwk4kfhp97.execute-api.us-east-1.amazonaws.com/prod/create-vpc" \
+ 
+         }'
+Example :
+		 
+curl -X POST "https://n4kz1yzs8k.execute-api.us-east-1.amazonaws.com/prod/create-vpc" \
       -H "Content-Type: application/json" \
-      -H "Authorization: Bearer valid-token-123" \
+      -H "Authorization: Bearer valid-token-1234" \
       -d '{
             "cidr_block": "10.0.0.0/16",
             "subnet_cidrs": ["10.0.1.0/24", "10.0.2.0/24"]
@@ -57,7 +61,7 @@ curl -X POST "https://bwk4kfhp97.execute-api.us-east-1.amazonaws.com/prod/create
 
 # curl -X GET "https://{ApigatewayID}.execute-api.us-east-1.amazonaws.com/prod/get-vpc/<vpcID>"
 
-
-curl -X GET "https://bwk4kfhp97.execute-api.us-east-1.amazonaws.com/prod/get-vpc/vpc-043b51a6a13e30b63" \
--H "Authorization: Bearer valid-token-123"
+Example:
+curl -X GET "https://n4kz1yzs8k.execute-api.us-east-1.amazonaws.com/prod/get-vpc/vpc-0f56b1b307481fca0" \
+-H "Authorization: Bearer valid-token-1234"
 

@@ -34,6 +34,10 @@ Resources:
                 Resource: "*"
               - Effect: Allow
                 Action:
+                  - secretsmanager:GetSecretValue  # Permission to read secrets
+                Resource: "*" #arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:AuthTokenSecret-*  # Replace with your actual secret ARN if needed                
+              - Effect: Allow
+                Action:
                   - dynamodb:PutItem
                   - dynamodb:GetItem
                 Resource: !GetAtt VPCRecordsTable.Arn
@@ -203,8 +207,6 @@ Resources:
       FunctionName: !Ref VPCAuthLambda
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*
-      
-  # Lambda Authorizer
   VPCAuthLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -215,41 +217,69 @@ Resources:
       Code:
         ZipFile: |
           import json
+          import boto3
+
+          # Initialize Secrets Manager client
+          secrets_client = boto3.client("secretsmanager")
+
+          # Hardcoded Secret Name
+          SECRET_NAME = "vpc-auth-secret"  # Replace with your actual secret name
+
+          def get_valid_tokens():
+              """Fetch valid tokens from AWS Secrets Manager"""
+              try:
+                  response = secrets_client.get_secret_value(SecretId=SECRET_NAME)
+                  secret_data = json.loads(response["SecretString"])  # Directly store the dictionary
+                  print(f"Retrieved tokens: {secret_data}")  # Debugging log
+                  return secret_data  # Now secret_data itself is a dictionary of tokens
+              except Exception as e:
+                  print(f"Error fetching secret: {str(e)}")
+                  return {}
 
           def lambda_handler(event, context):
-              token = event.get("authorizationToken", "").replace("Bearer ", "")
+              try:
+                  token = event.get("authorizationToken", "").replace("Bearer ", "")
+                   # Fetch valid tokens from AWS Secrets Manager
+                  valid_tokens = get_valid_tokens()
+                  print(f"Received token: {token}")  # Debugging
+                  print(f"Valid tokens: {valid_tokens}")  # Debugging
 
-              # Dummy token validation
-              VALID_TOKENS = {"valid-token-123": "user123"}  
-
-              if token in VALID_TOKENS:
+                  if token in valid_tokens:
+                      return {
+                          "principalId": valid_tokens[token],  # Maps token to principal ID
+                          "policyDocument": {
+                              "Version": "2012-10-17",
+                              "Statement": [
+                                  {
+                                      "Action": "execute-api:Invoke",
+                                      "Effect": "Allow",
+                                      "Resource": event["methodArn"]
+                                  }
+                              ]
+                          }
+                      }
+                  print("Token not found, returning Deny")
                   return {
-                      "principalId": VALID_TOKENS[token],
+                      "principalId": "unauthorized",
                       "policyDocument": {
                           "Version": "2012-10-17",
                           "Statement": [
                               {
                                   "Action": "execute-api:Invoke",
-                                  "Effect": "Allow",
+                                  "Effect": "Deny",
                                   "Resource": event["methodArn"]
                               }
                           ]
                       }
                   }
 
-              return {
-                  "principalId": "unauthorized",
-                  "policyDocument": {
-                      "Version": "2012-10-17",
-                      "Statement": [
-                          {
-                              "Action": "execute-api:Invoke",
-                              "Effect": "Deny",
-                              "Resource": event["methodArn"]
-                          }
-                      ]
+              except Exception as e:
+                  print(f"Lambda error: {str(e)}")  # Debugging
+                  return {
+                      "statusCode": 500,
+                      "body": json.dumps({"error": str(e)})  
                   }
-              }
+
 
   # API Gateway Authorizer
   VPCAuthorizer:
@@ -261,6 +291,7 @@ Resources:
       IdentitySource: method.request.header.Authorization
       AuthorizerUri: 
         !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VPCAuthLambda.Arn}/invocations
+      AuthorizerResultTtlInSeconds: 0   
 
 Outputs:
   ApiInvokeURL:
