@@ -69,6 +69,7 @@ resource "aws_api_gateway_authorizer" "vpc_auth" {
   type                = "TOKEN"
   identity_source     = "method.request.header.Authorization"
   authorizer_uri      = aws_lambda_function.auth_lambda.invoke_arn
+  authorizer_result_ttl_in_seconds = 0
 }
 
 # Create the API Gateway deployment
@@ -102,4 +103,10 @@ resource "aws_lambda_permission" "get_vpc_permission" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.get_vpc_lambda.function_name
   principal     = "apigateway.amazonaws.com"
+}
+resource "aws_lambda_permission" "vpc_auth_lambda_permission" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.auth_lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.vpc_api.execution_arn}/*"
 }
