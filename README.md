@@ -36,4 +36,20 @@ ________________________________________
 aws cloudformation create-stack --stack-name VPCManagementStack \
     --template-body file://vpc_management.yaml \
     --capabilities CAPABILITY_NAMED_IAM
+	
+For Testing :
+
+ curl -X POST "https://irqandyng7.execute-api.us-east-1.amazonaws.com/prod/create-vpc" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer valid-token-123" \
+      -d '{
+            "cidr_block": "10.0.0.0/16",
+            "subnet_cidrs": ["10.0.1.0/24", "10.0.2.0/24"]
+          }'
+
+# curl -X GET "https://q6o9v7ecek.execute-api.us-east-1.amazonaws.com/prod/get-vpc/vpc-0af8794b91fe04b06"
+
+
+curl -X GET "https://irqandyng7.execute-api.us-east-1.amazonaws.com/prod/get-vpc/vpc-050b1fdc5988335b8" \
+     -H "Authorization: Bearer valid-token-123"	
 
