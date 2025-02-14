@@ -128,7 +128,8 @@ Resources:
   CreateVPCMethod:
     Type: AWS::ApiGateway::Method
     Properties:
-      AuthorizationType: NONE
+      AuthorizationType: CUSTOM  
+      AuthorizerId: !Ref VPCAuthorizer
       HttpMethod: POST
       ResourceId: !Ref CreateVPCResource
       RestApiId: !Ref ApiGateway
@@ -159,7 +160,8 @@ Resources:
   GetVPCMethod:
     Type: AWS::ApiGateway::Method
     Properties:
-      AuthorizationType: NONE
+      AuthorizationType: CUSTOM 
+      AuthorizerId: !Ref VPCAuthorizer
       HttpMethod: GET
       ResourceId: !Ref GetVPCIdResource
       RestApiId: !Ref ApiGateway
@@ -194,6 +196,14 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref GetVPCLambda
       Principal: apigateway.amazonaws.com
+  VPCAuthLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref VPCAuthLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*
+      
   # Lambda Authorizer
   VPCAuthLambda:
     Type: AWS::Lambda::Function
@@ -256,17 +266,3 @@ Outputs:
   ApiInvokeURL:
     Description: "Invoke URL for the API Gateway"
     Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/"
-
-# curl -X POST "https://q6o9v7ecek.execute-api.us-east-1.amazonaws.com/prod/create-vpc" \
-     # -H "Content-Type: application/json" \
-     # -d '{
-           # "cidr_block": "10.0.0.0/16",
-           # "subnet_cidrs": ["10.0.1.0/24", "10.0.2.0/24"]
-         # }'
-
-# curl -X GET "https://q6o9v7ecek.execute-api.us-east-1.amazonaws.com/prod/get-vpc/vpc-0af8794b91fe04b06"
-
-
-curl -X GET "https://q6o9v7ecek.execute-api.us-east-1.amazonaws.com/prod/get-vpc/vpc-050b1fdc5988335b8" \
-     -H "Authorization: Bearer valid-token-123"
-
