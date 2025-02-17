@@ -50,18 +50,15 @@ For Testing :
          }'
 Example :
 		 
-curl -X POST "https://n4kz1yzs8k.execute-api.us-east-1.amazonaws.com/prod/create-vpc" \
-      -H "Content-Type: application/json" \
-      -H "Authorization: Bearer valid-token-1234" \
-      -d '{
-            "cidr_block": "10.0.0.0/16",
-            "subnet_cidrs": ["10.0.1.0/24", "10.0.2.0/24"]
-          }'		  
-		  
+curl -X POST "https://cfhvkessd.execute-api.us-east-1.amazonaws.com/prod/create-vpc" \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer valid-token-1234" \
+-d '{
+  "cidr_block": "10.0.0.0/16",
+  "subnet_cidrs": ["10.0.1.0/24", "10.0.2.0/24"]
+}'
 
-# curl -X GET "https://{ApigatewayID}.execute-api.us-east-1.amazonaws.com/prod/get-vpc/<vpcID>"
 
-Example:
-curl -X GET "https://n4kz1yzs8k.execute-api.us-east-1.amazonaws.com/prod/get-vpc/vpc-0f56b1b307481fca0" \
+curl -X GET "https://{ApigatewayID}.execute-api.us-east-1.amazonaws.com/prod/get-vpc/"
+Example: curl -X GET "https://cfhvkessd.execute-api.us-east-1.amazonaws.com/prod/get-vpc/vpc-033967b6371757" \
 -H "Authorization: Bearer valid-token-1234"
-
