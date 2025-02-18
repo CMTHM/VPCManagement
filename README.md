@@ -34,9 +34,8 @@ Step 2: Wait for Deployment
 Once the stack is successfully created, go to Outputs in CloudFormation to find the API Gateway Invoke URL.
 ________________________________________
 3.3 Deploy Using AWS CLI
-aws cloudformation create-stack --stack-name VPCManagementStack \
-    --template-body file://vpc_management.yaml \
-    --capabilities CAPABILITY_NAMED_IAM
+
+aws cloudformation create-stack --stack-name VPCManagementStack --template-body file://vpc-subnet-create.yml --capabilities CAPABILITY_NAMED_IAM
 	
 For Testing :
 
